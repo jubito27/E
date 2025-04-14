@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/lib/core.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        .chat-container {
+            height: calc(100vh - 160px);
+        }
+        .message-markdown pre {
+            background-color: #1e293b;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+        }
+        .message-markdown code {
+            font-family: 'Courier New', monospace;
+        }
+        .message-markdown p {
+            margin-bottom: 1rem;
+        }
+        .message-markdown ul, .message-markdown ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .message-markdown ul {
+            list-style-type: disc;
+        }
+        .message-markdown ol {
+            list-style-type: decimal;
+        }
+        .mic-animation {
+            animation: pulse 1.5s infinite;
+        }
+        .typing-indicator span {
+            animation: bounce 1.5s infinite ease-in-out;
+            display: inline-block;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 h-screen flex flex-col">
+    <!-- Header -->
+    <header class="bg-gray-800 p-4 flex items-center justify-between border-b border-gray-700">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center">
+                <i class="fas fa-robot text-xl"></i>
+            </div>
+            <h1 class="text-xl font-semibold">DeepSeek Assistant</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <button class="p-2 rounded-full hover:bg-gray-700 transition">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button class="p-2 rounded-full hover:bg-gray-700 transition">
+                <i class="fas fa-moon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Chat Container -->
+    <div class="chat-container overflow-y-auto p-4 space-y-4 flex-1">
+        <!-- Welcome Message -->
+        <div class="flex items-start space-x-3">
+            <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-robot text-sm"></i>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3 max-w-[85%]">
+                <p>Hello! I'm your DeepSeek AI assistant. How can I help you today?</p>
+            </div>
+        </div>
+
+        <!-- Messages will appear here -->
+        <div id="messages"></div>
+
+        <!-- Typing indicator (hidden by default) -->
+        <div id="typing-indicator" class="flex items-start space-x-3 hidden">
+            <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                <i class="fas fa-robot text-sm"></i>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3">
+                <div class="typing-indicator flex space-x-1">
+                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                    <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="p-4 border-t border-gray-700 bg-gray-800">
+        <div class="flex items-center space-x-2">
+            <button id="mic-button" class="p-3 rounded-full hover:bg-gray-700 transition">
+                <i class="fas fa-microphone text-gray-400"></i>
+            </button>
+            <div class="flex-1 relative">
+                <input 
+                    id="user-input" 
+                    type="text" 
+                    placeholder="Type your message..." 
+                    class="w-full bg-gray-700 rounded-full py-3 px-4 pr-12 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                <button id="send-button" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-400">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+        <div class="mt-2 text-xs text-gray-500 text-center">
+            <p>DeepSeek AI may produce inaccurate information. Verify important details.</p>
+        </div>
+    </div>
+
+    <!-- Backend Python Code (for reference) -->
+    <script type="text/python" id="backend-code">
+# Flask backend with DeepSeek integration
+from flask import Flask, request, jsonify
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+
+app = Flask(__name__)
+
+# Load DeepSeek model (adjust model name as needed)
+model_name = "deepseek-ai/deepseek-llm-7b"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map="auto")
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    data = request.json
+    user_message = data.get('message', '')
+    
+    # Prepare input
+    inputs = tokenizer(user_message, return_tensors="pt").to(model.device)
+    
+    # Generate response
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=512,
+        temperature=0.7,
+        top_p=0.9,
+        do_sample=True
+    )
+    
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    
+    return jsonify({
+        'response': response,
+        'status': 'success'
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+    </script>
+
+    <script>
+        // JavaScript for the UI functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const micButton = document.getElementById('mic-button');
+            const messagesContainer = document.getElementById('messages');
+            const typingIndicator = document.getElementById('typing-indicator');
+            
+            // Function to add a message to the chat
+            function addMessage(content, isUser = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `flex items-start space-x-3 ${isUser ? 'justify-end' : ''}`;
+                
+                if (!isUser) {
+                    messageDiv.innerHTML = `
+                        <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-robot text-sm"></i>
+                        </div>
+                        <div class="bg-gray-800 rounded-lg p-3 max-w-[85%] message-markdown">
+                            ${marked.parse(content)}
+                        </div>
+                    `;
+                } else {
+                    messageDiv.innerHTML = `
+                        <div class="bg-blue-600 rounded-lg p-3 max-w-[85%]">
+                            <p>${content}</p>
+                        </div>
+                        <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-user text-sm"></i>
+                        </div>
+                    `;
+                }
+                
+                messagesContainer.appendChild(messageDiv);
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+            
+            // Function to simulate getting a response from the backend
+            async function getAIResponse(userMessage) {
+                // Show typing indicator
+                typingIndicator.classList.remove('hidden');
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                
+                try {
+                    // In a real app, you would call your Flask backend here
+                    // const response = await fetch('/api/chat', {
+                    //     method: 'POST',
+                    //     headers: { 'Content-Type': 'application/json' },
+                    //     body: JSON.stringify({ message: userMessage })
+                    // });
+                    // const data = await response.json();
+                    
+                    // Simulate API delay
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // For demo purposes, we'll use a mock response
+                    const mockResponses = [
+                        `I'm DeepSeek AI, here to help with your questions about ${userMessage}.`,
+                        `The topic "${userMessage}" is quite interesting. Here's what I know about it...`,
+                        `For ${userMessage}, I'd recommend considering these points:\n\n1. First aspect\n2. Second factor\n3. Additional considerations`,
+                        `I can help with ${userMessage}. Could you provide more details about what specifically you'd like to know?`,
+                        `Let me analyze "${userMessage}". Based on my knowledge, here's the information:\n\n\`\`\`python\n# Example code related to your question\ndef example_function():\n    return "This is a sample response"\n\`\`\``
+                    ];
+                    
+                    const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+                    
+                    return randomResponse;
+                } finally {
+                    // Hide typing indicator
+                    typingIndicator.classList.add('hidden');
+                }
+            }
+            
+            // Handle send button click
+            sendButton.addEventListener('click', async function() {
+                const message = userInput.value.trim();
+                if (message) {
+                    addMessage(message, true);
+                    userInput.value = '';
+                    
+                    const response = await getAIResponse(message);
+                    addMessage(response);
+                }
+            });
+            
+            // Handle Enter key press
+            userInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendButton.click();
+                }
+            });
+            
+            // Handle microphone button
+            let isListening = false;
+            micButton.addEventListener('click', function() {
+                isListening = !isListening;
+                if (isListening) {
+                    micButton.innerHTML = '<i class="fas fa-microphone text-red-500 mic-animation"></i>';
+                    // In a real app, you would start voice recognition here
+                } else {
+                    micButton.innerHTML = '<i class="fas fa-microphone text-gray-400"></i>';
+                }
+            });
+            
+            // Initialize marked.js with syntax highlighting
+            marked.setOptions({
+                highlight: function(code, lang) {
+                    if (lang && hljs.getLanguage(lang)) {
+                        return hljs.highlight(lang, code).value;
+                    }
+                    return hljs.highlightAuto(code).value;
+                },
+                langPrefix: 'hljs language-',
+                breaks: true,
+                gfm: true
+            });
+        });
+    </script>
+</body>
+</html>
