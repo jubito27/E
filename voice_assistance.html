@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        @keyframes wave {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .mic-animation {
+            animation: pulse 1.5s infinite;
+        }
+        .wave-animation {
+            animation: wave 1.5s infinite;
+        }
+        .typing-indicator span {
+            animation: bounce 1.5s infinite ease-in-out;
+            display: inline-block;
+        }
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        .assistant-container {
+            height: 100vh;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        .voice-visualizer {
+            height: 60px;
+            width: 60px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .voice-bar {
+            width: 4px;
+            margin: 0 2px;
+            background: white;
+            border-radius: 10px;
+            transition: height 0.1s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <div class="assistant-container flex flex-col">
+        <!-- Header -->
+        <header class="p-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
+                    <i class="fas fa-robot text-xl"></i>
+                </div>
+                <h1 class="text-xl font-semibold">Voice Assistant</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button class="p-2 rounded-full hover:bg-gray-700 transition">
+                    <i class="fas fa-history"></i>
+                </button>
+                <button class="p-2 rounded-full hover:bg-gray-700 transition">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col items-center justify-center px-4">
+            <!-- Assistant State Visual -->
+            <div id="assistant-state" class="mb-8 flex flex-col items-center">
+                <div id="voice-animation" class="voice-visualizer bg-blue-600 mb-4">
+                    <div id="voice-bars" class="flex items-end h-10">
+                        <div class="voice-bar" style="height: 5px;"></div>
+                        <div class="voice-bar" style="height: 10px;"></div>
+                        <div class="voice-bar" style="height: 15px;"></div>
+                        <div class="voice-bar" style="height: 10px;"></div>
+                        <div class="voice-bar" style="height: 5px;"></div>
+                    </div>
+                </div>
+                <p id="state-message" class="text-lg">Tap the microphone to speak</p>
+            </div>
+
+            <!-- Command Output -->
+            <div id="command-output" class="bg-gray-800 bg-opacity-70 rounded-xl p-4 max-w-md w-full hidden">
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-robot text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p id="command-text" class="text-gray-100"></p>
+                        <div id="typing-indicator" class="typing-indicator flex space-x-1 mt-2 hidden">
+                            <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                            <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                            <span class="w-2 h-2 bg-gray-300 rounded-full"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Task Results -->
+            <div id="task-results" class="mt-4 bg-gray-800 bg-opacity-70 rounded-xl p-4 max-w-md w-full hidden">
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-check text-sm"></i>
+                    </div>
+                    <div class="flex-1">
+                        <p id="task-result-text" class="text-gray-100"></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer with Mic Button -->
+        <footer class="p-6 flex justify-center">
+            <button id="mic-button" class="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center shadow-lg hover:bg-blue-700 transition-all">
+                <i id="mic-icon" class="fas fa-microphone text-2xl"></i>
+            </button>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const micButton = document.getElementById('mic-button');
+            const micIcon = document.getElementById('mic-icon');
+            const stateMessage = document.getElementById('state-message');
+            const voiceAnimation = document.getElementById('voice-animation');
+            const voiceBars = document.getElementById('voice-bars').children;
+            const commandOutput = document.getElementById('command-output');
+            const commandText = document.getElementById('command-text');
+            const typingIndicator = document.getElementById('typing-indicator');
+            const taskResults = document.getElementById('task-results');
+            const taskResultText = document.getElementById('task-result-text');
+
+            let isListening = false;
+            let recognition;
+            let speechSynthesis = window.speechSynthesis;
+            let speechUtterance = new SpeechSynthesisUtterance();
+
+            // Check for speech recognition support
+            if (!('webkitSpeechRecognition' in window)) {
+                stateMessage.textContent = "Speech recognition not supported in your browser";
+                micButton.disabled = true;
+                return;
+            }
+
+            // Initialize speech recognition
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            // Speech recognition events
+            recognition.onstart = function() {
+                isListening = true;
+                micIcon.className = 'fas fa-microphone-slash text-2xl';
+                voiceAnimation.classList.add('wave-animation');
+                stateMessage.textContent = "Listening...";
+                commandOutput.classList.add('hidden');
+                taskResults.classList.add('hidden');
+            };
+
+            recognition.onresult = function(event) {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                if (finalTranscript) {
+                    processCommand(finalTranscript);
+                }
+            };
+
+            recognition.onerror = function(event) {
+                console.error('Speech recognition error', event.error);
+                stopListening();
+                stateMessage.textContent = "Error occurred. Try again.";
+                setTimeout(() => {
+                    stateMessage.textContent = "Tap the microphone to speak";
+                }, 2000);
+            };
+
+            recognition.onend = function() {
+                if (isListening) {
+                    recognition.start(); // Keep listening until manually stopped
+                }
+            };
+
+            // Voice visualizer animation
+            function updateVoiceVisualizer() {
+                if (!isListening) return;
+                
+                for (let i = 0; i < voiceBars.length; i++) {
+                    const randomHeight = Math.floor(Math.random() * 20) + 5;
+                    voiceBars[i].style.height = `${randomHeight}px`;
+                }
+                
+                requestAnimationFrame(updateVoiceVisualizer);
+            }
+
+            // Process voice command
+            async function processCommand(command) {
+                stopListening();
+                commandOutput.classList.remove('hidden');
+                commandText.textContent = command;
+                typingIndicator.classList.remove('hidden');
+                
+                // Simulate API call to backend
+                try {
+                    // In a real app, you would call your AI API here
+                    // const response = await fetch('/api/process-command', {
+                    //     method: 'POST',
+                    //     headers: { 'Content-Type': 'application/json' },
+                    //     body: JSON.stringify({ command: command })
+                    // });
+                    // const data = await response.json();
+                    
+                    // Simulate processing delay
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // Mock response based on command
+                    let response = getMockResponse(command);
+                    
+                    // Display response
+                    typingIndicator.classList.add('hidden');
+                    commandText.textContent = response.text;
+                    
+                    // Speak the response
+                    speak(response.text);
+                    
+                    // If there's a task result, show it
+                    if (response.taskResult) {
+                        taskResults.classList.remove('hidden');
+                        taskResultText.textContent = response.taskResult;
+                    }
+                    
+                } catch (error) {
+                    console.error('Error processing command:', error);
+                    typingIndicator.classList.add('hidden');
+                    commandText.textContent = "Sorry, I encountered an error processing your request.";
+                    speak("Sorry, I encountered an error processing your request.");
+                }
+            }
+
+            // Generate mock responses based on commands
+            function getMockResponse(command) {
+                command = command.toLowerCase();
+                
+                // Open app commands
+                if (command.includes('open') || command.includes('launch')) {
+                    const app = command.includes('calculator') ? 'Calculator' : 
+                                command.includes('calendar') ? 'Calendar' : 
+                                command.includes('browser') ? 'Web Browser' : 
+                                command.includes('email') ? 'Email' : 'an application';
+                    
+                    return {
+                        text: `Opening ${app} for you.`,
+                        taskResult: `Successfully opened ${app}`
+                    };
+                }
+                
+                // Search commands
+                if (command.includes('search') || command.includes('look up')) {
+                    const query = command.replace('search', '').replace('look up', '').trim();
+                    return {
+                        text: `Searching the web for "${query}". Here's what I found...`,
+                        taskResult: `Web results for: ${query}`
+                    };
+                }
+                
+                // Weather commands
+                if (command.includes('weather')) {
+                    return {
+                        text: "The weather today is sunny with a high of 75°F and a low of 60°F.",
+                        taskResult: "Weather report for your location"
+                    };
+                }
+                
+                // Timer/alarm commands
+                if (command.includes('timer') || command.includes('alarm')) {
+                    const time = command.match(/\d+/)?.[0] || '5';
+                    return {
+                        text: `Setting a ${time} minute timer for you.`,
+                        taskResult: `Timer set for ${time} minutes`
+                    };
+                }
+                
+                // Default response
+                return {
+                    text: `I heard you say: "${command}". I'm your voice assistant here to help with tasks, information, and more.`,
+                    taskResult: null
+                };
+            }
+
+            // Text-to-speech function
+            function speak(text) {
+                speechUtterance.text = text;
+                speechSynthesis.speak(speechUtterance);
+            }
+
+            // Stop listening function
+            function stopListening() {
+                isListening = false;
+                recognition.stop();
+                micIcon.className = 'fas fa-microphone text-2xl';
+                voiceAnimation.classList.remove('wave-animation');
+                stateMessage.textContent = "Processing your request...";
+                cancelAnimationFrame(updateVoiceVisualizer);
+            }
+
+            // Mic button click handler
+            micButton.addEventListener('click', function() {
+                if (isListening) {
+                    stopListening();
+                    stateMessage.textContent = "Tap the microphone to speak";
+                } else {
+                    recognition.start();
+                    updateVoiceVisualizer();
+                }
+            });
+
+            // Speech synthesis setup
+            speechUtterance.voice = speechSynthesis.getVoices().find(voice => voice.name.includes('English'));
+            speechUtterance.rate = 0.9;
+            speechUtterance.pitch = 1;
+            speechUtterance.volume = 1;
+
+            // Handle when speech synthesis voices are loaded
+            speechSynthesis.onvoiceschanged = function() {
+                speechUtterance.voice = speechSynthesis.getVoices().find(voice => voice.name.includes('English'));
+            };
+        });
+    </script>
+</body>
+</html>
